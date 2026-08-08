@@ -45,8 +45,8 @@ The application reads the following environment variables:
 Example:
 
 ```bash
-export MUSIC_SERVER_DATA_DIR="/home/you/.music-server"
-export MUSIC_SERVER_MUSIC_DIR="/mnt/media/music"
+export MUSIC_SERVER_DATA_DIR="$HOME/.music-server"
+export MUSIC_SERVER_MUSIC_DIR="$HOME/Music"
 export MUSIC_SERVER_AUDIO_PLAYER="mpv --no-video --really-quiet --"
 ```
 

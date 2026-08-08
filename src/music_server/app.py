@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 
 from music_server.config import load_settings
 from music_server.core import CoreService
@@ -56,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     """Run the application CLI."""
 
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args([] if argv is None else argv)
 
     settings = load_settings()
     service = CoreService(settings)
@@ -192,4 +193,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
