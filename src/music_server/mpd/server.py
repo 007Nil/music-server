@@ -38,7 +38,16 @@ class MpdServer:
         self._events = threading.Condition()
         self._event_version = 0
         self._changed_subsystems: set[str] = set()
+        self._tcp_server: socketserver.ThreadingTCPServer | None = None
         self.service.playback.subscribe(self._on_playback_event)
+
+    def _request_server_shutdown(self) -> None:
+        """Request threaded server shutdown from a client handler context."""
+
+        server = self._tcp_server
+        if server is None:
+            return
+        threading.Thread(target=server.shutdown, daemon=True).start()
 
     def _on_playback_event(self, subsystems: set[str]) -> None:
         with self._events:
@@ -128,8 +137,19 @@ class MpdServer:
                     if response.close_connection:
                         break
 
-        with socketserver.ThreadingTCPServer((host, port), Handler) as server:
-            server.serve_forever()
+        class ThreadingMpdTcpServer(socketserver.ThreadingTCPServer):
+            daemon_threads = True
+            allow_reuse_address = True
+            block_on_close = False
+
+        with ThreadingMpdTcpServer((host, port), Handler) as server:
+            self._tcp_server = server
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                return
+            finally:
+                self._tcp_server = None
 
     def execute_line(self, line: str) -> MpdResponse:
         """Parse and execute one MPD command line."""
@@ -166,7 +186,11 @@ class MpdServer:
         if command in {"command_list_ok_begin", "command_list_begin", "command_list_end"}:
             raise MpdCommandError("Command list mode requires a TCP session", code=5)
 
-        if command in {"close", "kill"}:
+        if command == "close":
+            return MpdResponse(lines=["OK"], close_connection=True)
+
+        if command == "kill":
+            self._request_server_shutdown()
             return MpdResponse(lines=["OK"], close_connection=True)
 
         if command == "status":
@@ -258,7 +282,6 @@ class MpdServer:
                 track = self.service.play_next()
             if track is None:
                 raise MpdCommandError("No such song")
-            self.service.audio.play_file(Path(track.path))
             return MpdResponse(lines=["OK"])
 
         if command == "playid":
@@ -313,6 +336,10 @@ class MpdServer:
 
         if command == "commands":
             return MpdResponse(lines=[*self._commands_lines(), "OK"])
+
+        if command == "random_queue":
+            self.service.playback.random_queue(10)
+            return MpdResponse(lines=["OK"])
 
         if command == "notcommands":
             return MpdResponse(lines=["OK"])
@@ -543,6 +570,7 @@ class MpdServer:
             "command: currentsong",
             "command: commands",
             "command: notcommands",
+            "command: random_queue",
             "command: outputs",
             "command: command_list_ok_begin",
             "command: command_list_begin",

@@ -214,6 +214,22 @@ class DatabaseStore:
             for row in rows
         ]
 
+    def random_track_ids(self, limit: int = 10) -> list[int]:
+        """Return a list of random track ids."""
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id
+                FROM tracks
+                ORDER BY RANDOM()
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            print(rows)
+        return [int(row["id"]) for row in rows]
+
     def pop_next_queue(self) -> TrackRecord | None:
         """Pop the next queued track and return it."""
 

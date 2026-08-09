@@ -136,6 +136,20 @@ class PlaybackController:
             self._publish({"player"})
         return track
 
+    def random_queue(self, count: int = 10) -> int:
+        """Enqueue a random selection of tracks."""
+    
+        track_ids = self.store.random_track_ids(count)
+        added = False
+        for track_id in track_ids:
+            if self.store.enqueue(track_id):
+                added = True
+        if added:
+            self._playlist_version += 1
+            self._persist_state()
+            self._publish({"playlist"})
+        return len(track_ids)
+    
     def play_queue_id(self, queue_id: int) -> TrackRecord | None:
         """Play a track by queue id and remove it from queue."""
 
@@ -196,9 +210,13 @@ class PlaybackController:
         self._publish({"player"})
         return True
 
+    def play(self, track_path: str) -> None:
+        """"""
+        
+
     def pause(self, paused: bool) -> bool:
         """Set pause state if track is active."""
-
+        print(self._current_track)
         if self._current_track is None:
             return False
         if paused and not self._paused:
@@ -209,6 +227,7 @@ class PlaybackController:
         self._paused = paused
         self._persist_state()
         self._publish({"player"})
+        
         return True
 
     def state(self) -> str:

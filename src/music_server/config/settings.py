@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import sys
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,7 +14,6 @@ class Settings:
 
     data_dir: Path
     music_dir: Path
-    audio_player: str
 
     @property
     def db_path(self) -> Path:
@@ -30,12 +30,17 @@ class Settings:
 
 def load_settings() -> Settings:
     """Load runtime settings from the environment."""
+    try:
+        data_dir = os.environ.get("MUSIC_SERVER_DATA_DIR")
+        music_dir = os.environ.get("MUSIC_SERVER_MUSIC_DIR")
+        return Settings(
+            data_dir=Path(data_dir).expanduser(),
+            music_dir=Path(music_dir).expanduser()
+        )
+    except Exception or TypeError as e:
+        print("MUSIC_SERVER_DATA_DIR or MUSIC_SERVER_MUSIC_DIR env varibale does not exists")
+        print("Below env variables are missing")
+        print("export MUSIC_SERVER_DATA_DIR='$HOME/.music-server'")
+        print("export MUSIC_SERVER_MUSIC_DIR='$HOME/Music'")
+        sys.exit(-1)
 
-    data_dir = os.environ.get("MUSIC_SERVER_DATA_DIR", ".music-server")
-    music_dir = os.environ.get("MUSIC_SERVER_MUSIC_DIR", "~/Music")
-    audio_player = os.environ.get("MUSIC_SERVER_AUDIO_PLAYER", "")
-    return Settings(
-        data_dir=Path(data_dir).expanduser(),
-        music_dir=Path(music_dir).expanduser(),
-        audio_player=audio_player,
-    )

@@ -47,7 +47,6 @@ Example:
 ```bash
 export MUSIC_SERVER_DATA_DIR="$HOME/.music-server"
 export MUSIC_SERVER_MUSIC_DIR="$HOME/Music"
-export MUSIC_SERVER_AUDIO_PLAYER="mpv --no-video --really-quiet --"
 ```
 
 ## Quick Start Helper
@@ -66,8 +65,7 @@ If your music folder is not the default, override the environment variables befo
 
 ```bash
 MUSIC_SERVER_MUSIC_DIR="/path/to/your/music" \
-MUSIC_SERVER_AUDIO_PLAYER="ffplay -nodisp -autoexit -loglevel quiet" \
-./scripts/run_local.sh scan
+\./scripts/run_local.sh scan
 ```
 
 The helper uses the project virtual environment and defaults to the local repository data directory and your home music folder.

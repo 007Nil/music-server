@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
 
 from music_server.config import load_settings
@@ -199,3 +200,22 @@ def test_mpd_unknown_command_returns_ack(tmp_path, monkeypatch) -> None:
 
     response = mpd.execute_line("doesnotexist")
     assert response.lines[0].startswith("ACK")
+
+
+def test_mpd_kill_requests_server_shutdown(tmp_path, monkeypatch) -> None:
+    service = _build_service(tmp_path, monkeypatch)
+    mpd = MpdServer(service)
+
+    shutdown_called = threading.Event()
+
+    class _FakeServer:
+        def shutdown(self) -> None:
+            shutdown_called.set()
+
+    mpd._tcp_server = _FakeServer()  # type: ignore[assignment]
+
+    response = mpd.execute_line("kill")
+
+    assert response.lines == ["OK"]
+    assert response.close_connection is True
+    assert shutdown_called.wait(0.5)

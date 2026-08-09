@@ -24,7 +24,7 @@ class CoreService:
         self.scanner = LibraryScanner(settings=settings, store=self.store)
         self.library = LibraryService(store=self.store)
         self.playback = PlaybackController(store=self.store, state_path=settings.playback_state_path)
-        self.audio = AudioPipeline(configured_player=settings.audio_player)
+        self.audio = AudioPipeline()
 
     def bootstrap(self) -> None:
         """Prepare directories and initialize persistence."""
@@ -73,7 +73,7 @@ class CoreService:
         track = self.playback.play_track(track_id)
         if track is None:
             return None
-        self.audio.play_file(Path(track.path))
+        # self.audio.play_file(Path(track.path))
         return track
 
     def stop_audio(self) -> None:
@@ -102,5 +102,6 @@ class CoreService:
 
     def pause_audio(self, paused: bool) -> bool:
         """Pause or resume playback state."""
-
+        is_playing = self.audio.is_playing()
+        print(f"pause_audio: is_playing={is_playing}, paused={paused}")
         return self.playback.pause(paused)
