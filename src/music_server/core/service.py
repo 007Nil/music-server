@@ -150,5 +150,38 @@ class CoreService:
             # Best effort: update backend state when transitioning between play/pause.
             logger.debug("Updating backend playback state to %s", "paused" if paused else "playing")
             self.audio.set_paused(paused)
-        logger.info("Playback %s", "paused" if paused else "resumed")
+            logger.info("Playback %s", "paused" if paused else "resumed")
         return True
+
+    def play_position(self, position: int):
+        """Play and remove a queued track by position."""
+
+        self.bootstrap()
+        logger.info("Playing track at position %d", position)
+        track = self.playback.play_position(position)
+        if track is None:
+            logger.warning("Track not found at position %d", position)
+            return None
+        logger.info("Playing track: %s - %s", track.artist, track.title)
+        self.audio.play_file(Path(track.path))
+        return track
+
+    def play_queue_id(self, queue_id: int):
+        """Play and remove a queued track by queue id."""
+
+        self.bootstrap()
+        logger.info("Playing queue item %d", queue_id)
+        track = self.playback.play_queue_id(queue_id)
+        if track is None:
+            logger.warning("Queue item %d not found", queue_id)
+            return None
+        logger.info("Playing track: %s - %s", track.artist, track.title)
+        self.audio.play_file(Path(track.path))
+        return track
+
+    def random_queue(self, count: int = 10) -> int:
+        """Enqueue random tracks."""
+
+        self.bootstrap()
+        logger.info("Enqueueing %d random tracks", count)
+        return self.playback.random_queue(count)

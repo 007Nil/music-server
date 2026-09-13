@@ -186,6 +186,9 @@ All commands are implemented in [src/music_server/app.py](src/music_server/app.p
 - `DELETE /api/queue/{id}` - Remove queue item by ID
 - `POST /api/playback/play` - Play specific track
 - `POST /api/playback/play-next` - Play next queued track
+- `POST /api/playback/play-position` - Play track at queue position (body: `{"position": 0}`)
+- `POST /api/playback/play-queue-id` - Play by queue ID (body: `{"queue_id": 1}`)
+- `POST /api/playback/random-queue` - Enqueue random tracks (body: `{"count": 10}`)
 - `POST /api/playback/pause` - Pause/resume playback
 - `POST /api/playback/resume` - Resume playback
 - `POST /api/playback/stop` - Stop playback

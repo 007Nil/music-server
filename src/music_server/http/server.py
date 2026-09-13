@@ -122,6 +122,25 @@ class HttpApi:
                 raise HttpApiError("track not found", status=HTTPStatus.NOT_FOUND)
             return HttpResponse(status=HTTPStatus.OK, payload={"track": self._track_payload(track)})
 
+        if method == "POST" and route == "/api/playback/play-position":
+            position = self._payload_int(payload, "position", minimum=0)
+            track = self.service.play_position(position)
+            if track is None:
+                raise HttpApiError("position not found in queue", status=HTTPStatus.NOT_FOUND)
+            return HttpResponse(status=HTTPStatus.OK, payload={"track": self._track_payload(track)})
+
+        if method == "POST" and route == "/api/playback/play-queue-id":
+            queue_id = self._payload_int(payload, "queue_id", minimum=1)
+            track = self.service.play_queue_id(queue_id)
+            if track is None:
+                raise HttpApiError("queue item not found", status=HTTPStatus.NOT_FOUND)
+            return HttpResponse(status=HTTPStatus.OK, payload={"track": self._track_payload(track)})
+
+        if method == "POST" and route == "/api/playback/random-queue":
+            count = self._payload_int(payload, "count", minimum=1, maximum=100, default=10)
+            added = self.service.random_queue(count)
+            return HttpResponse(status=HTTPStatus.OK, payload={"random_queue_added": added, "count": count})
+
         if method == "POST" and route == "/api/playback/pause":
             paused = self._payload_bool(payload, "paused", default=True)
             if not self.service.pause_audio(paused):
