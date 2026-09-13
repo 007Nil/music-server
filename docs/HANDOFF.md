@@ -49,7 +49,7 @@ This is still **not** full Mopidy parity yet, but it is now a much stronger loca
   - SQL-file based schema and migration loading
   - track upsert/list/search/get/count (with duration, stable URI, track number)
   - queue enqueue/list/pop/count
-  - queue item delete/clear helpers
+  - queue item delete/clear/helpers (by ID, by position)
   - distinct artist/album counters
   - stale-track pruning support
 - [src/music_server/database/sql/schema.sql](src/music_server/database/sql/schema.sql)
@@ -58,6 +58,23 @@ This is still **not** full Mopidy parity yet, but it is now a much stronger loca
 - [src/music_server/database/sql/migration_add_track_no.sql](src/music_server/database/sql/migration_add_track_no.sql)
 - [src/music_server/database/sql/migration_add_duration.sql](src/music_server/database/sql/migration_add_duration.sql)
 - [src/music_server/database/sql/maintenance_backfill_uri.sql](src/music_server/database/sql/maintenance_backfill_uri.sql)
+
+### Database Schema
+
+**Tracks table:**
+- `id` (INTEGER PRIMARY KEY)
+- `path` (TEXT NOT NULL UNIQUE) - absolute file path
+- `uri` (TEXT NOT NULL UNIQUE) - relative URI from music directory
+- `title` (TEXT NOT NULL) - track title
+- `artist` (TEXT NOT NULL) - track artist(s)
+- `album` (TEXT NOT NULL) - album name
+- `track_no` (INTEGER NOT NULL DEFAULT 0) - track number
+- `duration` (REAL NOT NULL DEFAULT 0) - duration in seconds
+- `mtime` (REAL NOT NULL) - file modification time
+
+**Queue table:**
+- `id` (INTEGER PRIMARY KEY) - queue item ID
+- `track_id` (INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE) - reference to track
 
 ### Library and scanner
 
@@ -71,6 +88,8 @@ This is still **not** full Mopidy parity yet, but it is now a much stronger loca
   - stale track removal for deleted files
 - [src/music_server/library/service.py](src/music_server/library/service.py)
   - read/query interface over store
+
+### Database Schema
 
 ### Playback and audio
 
@@ -102,10 +121,32 @@ This is still **not** full Mopidy parity yet, but it is now a much stronger loca
 
 ### Tests
 
-- [tests/test_smoke.py](tests/test_smoke.py)
-- [tests/test_prototype.py](tests/test_prototype.py)
-- [tests/test_audio.py](tests/test_audio.py)
-- [tests/test_http.py](tests/test_http.py)
+- [tests/test_smoke.py](tests/test_smoke.py) - 3 tests
+  - `test_main_smoke`: Verifies app startup with expected output
+  - `test_load_settings_uses_default_data_dir`: Validates default config path `.music-server`
+  - `test_core_service_start_uses_settings`: Confirms CoreService uses correct settings
+
+- [tests/test_prototype.py](tests/test_prototype.py) - 6 tests
+  - `test_scan_indexes_audio_files`: Verifies scanning finds audio files and indexes them
+  - `test_queue_and_play_next`: Tests queue operations (enqueue, list, play_next, count)
+  - `test_scan_removes_deleted_tracks`: Validates stale track cleanup when files deleted
+  - `test_status_command_output`: Verifies CLI status command output format
+  - `test_cli_play_and_stop`: Tests play/stop CLI commands with expected output
+  - `test_playback_state_persists_across_service_restart`: Validates JSON state persistence
+
+- [tests/test_audio.py](tests/test_audio.py) - 5 tests
+  - `test_audio_pipeline_uses_backend_for_playback`: Validates backend integration
+  - `test_audio_pipeline_stops_previous_playback`: Tests stop/replace behavior
+  - `test_audio_pipeline_can_report_current_state`: Verifies position/tags reporting
+  - `test_audio_pipeline_supports_seek_and_volume_controls`: Tests seek/volume/mute
+  - `test_playback_controller_ignores_missing_tracks_on_restore`: Validates error handling
+
+- [tests/test_http.py](tests/test_http.py) - 3 tests
+  - `test_http_status_tracks_and_now_playing`: Tests GET `/api/status`, `/api/tracks`, `/api/now-playing`
+  - `test_http_queue_and_playback_controls`: Tests queue POST/GET, play-next, pause, resume, stop
+  - `test_http_scan_and_error_paths`: Tests library scan, track lookup, and 404 error handling
+
+**Total: 17 passing test cases** covering CLI, persistence, audio backend, and HTTP API.
 
 ## 3. CLI Commands Currently Available
 
@@ -121,11 +162,36 @@ This is still **not** full Mopidy parity yet, but it is now a much stronger loca
 - `play TRACK_ID`
 - `pause [0|1]`
 - `stop`
+- `seek POSITION`
+- `volume VALUE`
+- `mute [0|1]`
 - `http-serve --host HOST --port PORT`
 
 All commands are implemented in [src/music_server/app.py](src/music_server/app.py).
 
-## 4. How To Test
+## 4. HTTP API Endpoints
+
+**Read endpoints:**
+- `GET /health` - Health check
+- `GET /api/status` - Current status (tracks, queue, playback state)
+- `GET /api/tracks?limit=N&search=QUERY` - List or search tracks
+- `GET /api/tracks/{id}` - Get track by ID
+- `GET /api/queue` - List queue items
+- `GET /api/now-playing` - Current playback status
+
+**Write endpoints:**
+- `POST /api/library/scan` - Scan music library
+- `POST /api/queue` - Add track to queue (body: `{"track_id": 1}`)
+- `DELETE /api/queue` - Clear entire queue
+- `DELETE /api/queue/{id}` - Remove queue item by ID
+- `POST /api/playback/play` - Play specific track
+- `POST /api/playback/play-next` - Play next queued track
+- `POST /api/playback/pause` - Pause/resume playback
+- `POST /api/playback/resume` - Resume playback
+- `POST /api/playback/stop` - Stop playback
+- `POST /api/playback/seek` - Seek to position (body: `{"position": 120.5}`)
+- `POST /api/playback/volume` - Set volume (body: `{"value": 50}`)
+- `POST /api/playback/mute` - Mute/unmute (body: `{"muted": true}`)
 
 ### Automated tests
 
@@ -134,6 +200,13 @@ Run from repo root:
 ```bash
 .venv/bin/python -m pytest
 ```
+
+Test coverage includes:
+- CLI commands and startup flow (test_smoke.py - 3 tests)
+- Library scanning and indexing (test_prototype.py - 6 tests)
+- Queue operations and persistence (test_prototype.py)
+- Audio backend integration (test_audio.py - 5 tests)
+- HTTP API endpoints (test_http.py - 3 tests)
 
 ### Quick runtime smoke check
 
@@ -181,11 +254,29 @@ curl http://127.0.0.1:8080/api/status
 Using curl:
 
 ```bash
+# Library operations
 curl -X POST http://127.0.0.1:8080/api/library/scan -H "Content-Type: application/json" -d '{}'
-curl "http://127.0.0.1:8080/api/tracks?limit=20"
+curl "http://127.0.0.1:8080/api/tracks?limit=20&search=artist"
+curl "http://127.0.0.1:8080/api/tracks/1"
+
+# Queue operations
 curl -X POST http://127.0.0.1:8080/api/queue -H "Content-Type: application/json" -d '{"track_id": 1}'
 curl http://127.0.0.1:8080/api/queue
+curl -X DELETE http://127.0.0.1:8080/api/queue/1
+curl -X DELETE http://127.0.0.1:8080/api/queue
+
+# Playback controls
+curl -X POST http://127.0.0.1:8080/api/playback/play -H "Content-Type: application/json" -d '{"track_id": 1}'
 curl -X POST http://127.0.0.1:8080/api/playback/play-next -H "Content-Type: application/json" -d '{}'
+curl -X POST http://127.0.0.1:8080/api/playback/pause -H "Content-Type: application/json" -d '{"paused": true}'
+curl -X POST http://127.0.0.1:8080/api/playback/resume -H "Content-Type: application/json" -d '{}'
+curl -X POST http://127.0.0.1:8080/api/playback/stop -H "Content-Type: application/json" -d '{}'
+curl -X POST http://127.0.0.1:8080/api/playback/seek -H "Content-Type: application/json" -d '{"position": 120.5}'
+curl -X POST http://127.0.0.1:8080/api/playback/volume -H "Content-Type: application/json" -d '{"value": 50}'
+curl -X POST http://127.0.0.1:8080/api/playback/mute -H "Content-Type: application/json" -d '{"muted": true}'
+
+# Status
+curl http://127.0.0.1:8080/api/status
 curl http://127.0.0.1:8080/api/now-playing
 ```
 
@@ -374,3 +465,44 @@ Live logs:
 ```bash
 sudo journalctl -u music-server -f
 ```
+
+## 11. Test Case Summary
+
+| Test File | Test Count | Coverage |
+|-----------|------------|----------|
+| test_smoke.py | 3 | CLI startup, settings, service initialization |
+| test_prototype.py | 6 | Library scanning, queue operations, persistence |
+| test_audio.py | 5 | Audio backend integration, seek/volume/mute |
+| test_http.py | 3 | HTTP API endpoints and error handling |
+| **Total** | **17** | All major components |
+
+### Test Coverage by Component
+
+**CLI Commands:**
+- `start`, `init-db`, `status`, `scan`, `play`, `stop`, `pause`, `play-next`
+
+**Library Operations:**
+- File scanning with extension filtering
+- Metadata extraction from tags and filename fallback
+- Stale track removal for deleted files
+- Track listing and search
+
+**Queue Operations:**
+- Enqueue tracks
+- List queue items
+- Play next/position-based playback
+- Delete by queue ID
+- Clear entire queue
+
+**Audio Backend:**
+- GStreamer integration
+- Play/stop/pause/resume
+- Seek to position
+- Volume control
+- Mute/unmute
+
+**HTTP API:**
+- All GET endpoints (health, status, tracks, queue, now-playing)
+- All POST endpoints (scan, queue, playback controls)
+- All DELETE endpoints (queue, queue items)
+- Error handling with proper HTTP status codes
