@@ -11,6 +11,5 @@ fi
 
 export MUSIC_SERVER_DATA_DIR="${MUSIC_SERVER_DATA_DIR:-$ROOT_DIR/.music-server}"
 export MUSIC_SERVER_MUSIC_DIR="${MUSIC_SERVER_MUSIC_DIR:-$HOME/Music}"
-export MUSIC_SERVER_AUDIO_PLAYER="${MUSIC_SERVER_AUDIO_PLAYER:-ffplay -nodisp -autoexit -loglevel quiet}"
 
 exec .venv/bin/python -m music_server.app "$@"

@@ -216,7 +216,7 @@ class PlaybackController:
 
     def pause(self, paused: bool) -> bool:
         """Set pause state if track is active."""
-        print(self._current_track)
+        # print(self._current_track)
         if self._current_track is None:
             return False
         if paused and not self._paused:

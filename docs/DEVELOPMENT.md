@@ -301,17 +301,16 @@ flowchart TD
     E --> F[LocalAudioBackend.set_volume / set_mute]
 ```
 
-### 8.5 MPD commands: status, add, play, next, currentsong, search
+### 8.5 HTTP routes: status, scan, queue, playback, now-playing
 
 ```mermaid
 flowchart TD
-    A[MPD client] --> B[MpdServer.serve_forever]
-    B --> C[MpdServer.execute_line]
-    C --> D[MpdServer._execute]
-    D --> E[CoreService.bootstrap]
-    D --> F[PlaybackController methods]
-    D --> G[AudioPipeline.play_file]
-    D --> H[MpdServer._status_lines / _search_lines / _track_lines]
+    A[HTTP client] --> B[HttpServer.serve_forever]
+    B --> C[HttpApi.handle]
+    C --> D[CoreService.bootstrap]
+    C --> E[LibraryService and DatabaseStore]
+    C --> F[PlaybackController methods]
+    C --> G[AudioPipeline controls]
 ```
 
 ## 9. Persistence model
@@ -338,6 +337,6 @@ If you want the shortest possible explanation of the runtime:
 2. The CLI delegates to CoreService.
 3. CoreService uses PlaybackController for queue and state.
 4. CoreService uses AudioPipeline for actual audio output.
-5. The MPD server routes protocol commands through the same CoreService and PlaybackController path.
+5. The HTTP server routes API requests through the same CoreService and PlaybackController path.
 
 That is the backbone of the application.

@@ -12,15 +12,12 @@ The project is now a working local music server prototype with:
 - metadata extraction from media tags with fallback parsing
 - track listing and search
 - queue add/list/play/clear behavior
-- MPD protocol command handling (direct line protocol + TCP server)
-- MPD command-list support and event-driven idle notifications
-- broader MPD compatibility for common client commands such as `list`, `listallinfo`, `playlistfind`, and `lsinfo`
-- a native Python audio backend via soundfile/sounddevice when available
-- compatibility with an explicit configured player command for scripted testing or external playback
+- HTTP API command handling (JSON over threaded HTTP server)
+- a native GStreamer audio backend via PyGObject
 - playback timeline reporting with persisted startup recovery state
 - normalized metadata fields (artist/title/album/track number + stable URI)
 - runnable CLI commands
-- automated tests passing (21 tests)
+- automated tests for core/audio/prototype/http behavior
 
 This is still **not** full Mopidy parity yet, but it is now a much stronger local playback prototype.
 
@@ -43,18 +40,24 @@ This is still **not** full Mopidy parity yet, but it is now a much stronger loca
 - [src/music_server/config/settings.py](src/music_server/config/settings.py)
   - `MUSIC_SERVER_DATA_DIR`
   - `MUSIC_SERVER_MUSIC_DIR`
-  - `MUSIC_SERVER_AUDIO_PLAYER`
   - computed `db_path`
 
 ### Persistence
 
 - [src/music_server/database/store.py](src/music_server/database/store.py)
   - sqlite schema creation
+  - SQL-file based schema and migration loading
   - track upsert/list/search/get/count (with duration, stable URI, track number)
   - queue enqueue/list/pop/count
   - queue item delete/clear helpers
   - distinct artist/album counters
   - stale-track pruning support
+- [src/music_server/database/sql/schema.sql](src/music_server/database/sql/schema.sql)
+  - base table/index definitions
+- [src/music_server/database/sql/migration_add_uri.sql](src/music_server/database/sql/migration_add_uri.sql)
+- [src/music_server/database/sql/migration_add_track_no.sql](src/music_server/database/sql/migration_add_track_no.sql)
+- [src/music_server/database/sql/migration_add_duration.sql](src/music_server/database/sql/migration_add_duration.sql)
+- [src/music_server/database/sql/maintenance_backfill_uri.sql](src/music_server/database/sql/maintenance_backfill_uri.sql)
 
 ### Library and scanner
 
@@ -79,31 +82,30 @@ This is still **not** full Mopidy parity yet, but it is now a much stronger loca
   - event notifications for MPD idle clients
 
 - [src/music_server/audio/pipeline.py](src/music_server/audio/pipeline.py)
-  - native audio playback via soundfile/sounddevice when available
-  - configured player command support for compatibility and scripted playback
+  - native audio playback via GStreamer
   - playback lifecycle stop/replace behavior
   - basic position, volume, mute, and pause/resume handling
 
-### MPD protocol
+### HTTP API
 
-- [src/music_server/mpd/server.py](src/music_server/mpd/server.py)
-  - in-process command execution for tests and integration
-  - threaded TCP server with MPD banner
-  - implemented command set:
-    - `ping`, `idle`, `noidle`, `close`, `kill`
-    - `status`, `stats`, `outputs`
-    - `listall`, `list`, `listallinfo`, `find`, `search`, `playlistinfo`, `playlistfind`, `lsinfo`
-    - `command_list_begin`, `command_list_ok_begin`, `command_list_end`
-    - `add`, `addid`, `clear`, `deleteid`
-    - `play`, `playid`, `next`, `pause`, `stop`, `currentsong`
-    - `commands`, `notcommands`
+- [src/music_server/http/server.py](src/music_server/http/server.py)
+  - in-process API dispatch for tests and integration
+  - threaded HTTP server
+  - implemented routes:
+    - `GET /health`, `GET /api/status`, `GET /api/now-playing`
+    - `POST /api/library/scan`
+    - `GET /api/tracks`, `GET /api/tracks/{id}`
+    - `GET /api/queue`, `POST /api/queue`, `DELETE /api/queue`, `DELETE /api/queue/{id}`
+    - `POST /api/playback/play`, `POST /api/playback/play-next`
+    - `POST /api/playback/pause`, `POST /api/playback/resume`, `POST /api/playback/stop`
+    - `POST /api/playback/seek`, `POST /api/playback/volume`, `POST /api/playback/mute`
 
 ### Tests
 
 - [tests/test_smoke.py](tests/test_smoke.py)
 - [tests/test_prototype.py](tests/test_prototype.py)
-- [tests/test_mpd.py](tests/test_mpd.py)
 - [tests/test_audio.py](tests/test_audio.py)
+- [tests/test_http.py](tests/test_http.py)
 
 ## 3. CLI Commands Currently Available
 
@@ -119,7 +121,7 @@ This is still **not** full Mopidy parity yet, but it is now a much stronger loca
 - `play TRACK_ID`
 - `pause [0|1]`
 - `stop`
-- `mpd-serve --host HOST --port PORT`
+- `http-serve --host HOST --port PORT`
 
 All commands are implemented in [src/music_server/app.py](src/music_server/app.py).
 
@@ -149,7 +151,6 @@ Expected behavior:
 
 ```bash
 MUSIC_SERVER_MUSIC_DIR=/path/to/music \
-MUSIC_SERVER_AUDIO_PLAYER="mpv --no-video --really-quiet --" \
 .venv/bin/python -m music_server.app scan
 .venv/bin/python -m music_server.app tracks --limit 20
 .venv/bin/python -m music_server.app queue-add 1
@@ -160,15 +161,39 @@ MUSIC_SERVER_AUDIO_PLAYER="mpv --no-video --really-quiet --" \
 .venv/bin/python -m music_server.app stop
 ```
 
-### MPD server runtime check
+### HTTP server runtime check
 
 Start server:
 
 ```bash
-.venv/bin/python -m music_server.app mpd-serve --host 127.0.0.1 --port 6600
+.venv/bin/python -m music_server.app http-serve --host 127.0.0.1 --port 8080
 ```
 
-Then use any MPD client pointed at `127.0.0.1:6600`.
+Then query endpoints, for example:
+
+```bash
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/api/status
+```
+
+### REST client checks (curl or Postman)
+
+Using curl:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/library/scan -H "Content-Type: application/json" -d '{}'
+curl "http://127.0.0.1:8080/api/tracks?limit=20"
+curl -X POST http://127.0.0.1:8080/api/queue -H "Content-Type: application/json" -d '{"track_id": 1}'
+curl http://127.0.0.1:8080/api/queue
+curl -X POST http://127.0.0.1:8080/api/playback/play-next -H "Content-Type: application/json" -d '{}'
+curl http://127.0.0.1:8080/api/now-playing
+```
+
+Using Postman:
+
+- Import collection file: `docs/postman/music-server.postman_collection.json`
+- Ensure collection variable `baseUrl` is set to `http://127.0.0.1:8080`
+- Run requests in order: Health -> Status -> Scan Library -> List Tracks -> Queue Add -> Play Next -> Now Playing
 
 ## 5. What Is Not Implemented Yet
 
@@ -189,15 +214,16 @@ Not implemented:
 - album art pipeline
 - complete browse semantics and URI model parity
 
-### mopidy-mpd parity
+### HTTP API maturity
 
 Not implemented:
 
-- full MPD command surface compatibility
-- full MPD idle/noidle semantics parity (advanced session behavior still partial)
-- authentication and permission model
+- authentication and authorization
+- request rate limiting
+- streaming endpoints for artwork/audio
+- API versioning policy
 
-Current implementation: [src/music_server/mpd/server.py](src/music_server/mpd/server.py)
+Current implementation: [src/music_server/http/server.py](src/music_server/http/server.py)
 
 ### Real audio backend
 
@@ -222,7 +248,7 @@ The project is now a strong local-playback prototype, but it is not yet producti
 
 2. Logging and observability
    - add structured logging and rotation
-   - surface useful runtime diagnostics when playback or MPD operations fail
+  - surface useful runtime diagnostics when playback or HTTP operations fail
 
 3. Playback robustness
    - improve player process monitoring and recovery when the player exits unexpectedly
@@ -235,9 +261,9 @@ The project is now a strong local-playback prototype, but it is not yet producti
    - improve crash-safe queue and playback-state recovery
    - handle missing or changed files gracefully
 
-5. MPD compatibility and client support
-   - cover more advanced MPD client commands and edge cases
-   - improve idle/session handling for real-world clients
+5. HTTP client support
+  - stabilize API contracts for custom clients
+  - add authentication and API versioning strategy
 
 6. Monitoring and resilience
    - add simple monitoring or restart guidance for local unattended use
@@ -247,7 +273,7 @@ The project is now a strong local-playback prototype, but it is not yet producti
 For this project, production readiness means all of the following are true:
 
 - local library scanning and playback are reliable on real media collections
-- MPD clients can connect and operate without surprising failures
+- HTTP clients can connect and operate without surprising failures
 - the server starts cleanly and recovers from common runtime errors
 - logs and runtime state are understandable for day-to-day use
 - the experience is smooth enough for regular single-user listening
@@ -257,15 +283,16 @@ For this project, production readiness means all of the following are true:
 1. Add structured logging and better runtime diagnostics.
 2. Improve player process monitoring and recovery.
 3. Add seek support and volume/mute controls.
-4. Expand MPD client compatibility for stricter clients (`listplaylists`, `playlistclear`, `playlistadd`, etc.).
-5. Improve idle/noidle behavior for real-world client flows.
+4. Add API auth, versioning, and client-facing error standards.
+5. Add operational hardening (service watchdogs and monitoring hooks).
 6. Harden persistence and recovery around queue and playback state.
 
 ## 8. Known Constraints
 
 - Tag extraction depends on file format support in `mutagen`; fallback remains filename parsing.
 - Audio output depends on an external player executable (`mpv`, `ffplay`, `cvlc`, or configured command).
-- MPD support is practical but partial; some clients may require additional commands.
+- Audio output depends on a working GStreamer runtime on the host.
+- HTTP API is local-first and currently unauthenticated; deploy behind trusted network boundaries or a reverse proxy with auth.
 - Queue/playback behavior is local and pragmatic, not Mopidy-parity complete.
 
 ## 9. Context Prompt For Next Chat
@@ -275,7 +302,75 @@ Use this prompt to continue quickly in a new `/chat` session:
 ```text
 Use HANDOFF.md as source of truth.
 Continue implementation from the current working prototype.
-Primary next goal: improve MPD client compatibility and metadata quality for daily usage.
+Primary next goal: improve HTTP API maturity and metadata quality for daily usage.
 Before each edit, state which files will change and expected behavior.
 After edits, run .venv/bin/python -m pytest.
+```
+
+## 10. Production Runbook
+
+Use this runbook for a single-user production-style deployment.
+
+### Deployment assumptions
+
+- application code in `/opt/music-server`
+- dedicated linux user `music`
+- data path `/var/lib/music-server`
+- library path `/srv/music`
+- service bound to `127.0.0.1:8080`
+
+### Environment file
+
+Create `/etc/music-server.env`:
+
+```bash
+MUSIC_SERVER_DATA_DIR=/var/lib/music-server
+MUSIC_SERVER_MUSIC_DIR=/srv/music
+```
+
+### One-time initialization
+
+```bash
+cd /opt/music-server
+.venv/bin/python -m music_server.app init-db
+.venv/bin/python -m music_server.app scan
+```
+
+### systemd unit
+
+Create `/etc/systemd/system/music-server.service`:
+
+```ini
+[Unit]
+Description=music-server HTTP API
+After=network.target
+
+[Service]
+Type=simple
+User=music
+Group=music
+WorkingDirectory=/opt/music-server
+EnvironmentFile=/etc/music-server.env
+ExecStart=/opt/music-server/.venv/bin/python -m music_server.app http-serve --host 127.0.0.1 --port 8080
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Start and verify:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now music-server
+sudo systemctl status music-server
+curl -f http://127.0.0.1:8080/health
+curl -f http://127.0.0.1:8080/api/status
+```
+
+Live logs:
+
+```bash
+sudo journalctl -u music-server -f
 ```

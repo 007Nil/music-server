@@ -8,7 +8,7 @@ import sys
 
 from music_server.config import load_settings
 from music_server.core import CoreService
-from music_server.mpd import MpdServer
+from music_server.http import HttpServer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
@@ -47,9 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
     mute_cmd.add_argument("value", type=int, nargs="?", default=1)
     sub.add_parser("stop")
 
-    mpd_serve = sub.add_parser("mpd-serve")
-    mpd_serve.add_argument("--host", type=str, default="127.0.0.1")
-    mpd_serve.add_argument("--port", type=int, default=6600)
+    http_serve = sub.add_parser("http-serve")
+    http_serve.add_argument("--host", type=str, default="127.0.0.1")
+    http_serve.add_argument("--port", type=int, default=8080)
     return parser
 
 
@@ -182,9 +182,9 @@ def main(argv: list[str] | None = None) -> int:
         print("paused" if paused else "resumed")
         return 0
 
-    if command == "mpd-serve":
-        server = MpdServer(service)
-        print(f"mpd server listening on {args.host}:{args.port}")
+    if command == "http-serve":
+        server = HttpServer(service)
+        print(f"http server listening on {args.host}:{args.port}")
         server.serve_forever(host=args.host, port=args.port)
         return 0
 

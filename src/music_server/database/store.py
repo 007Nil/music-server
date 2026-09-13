@@ -41,35 +41,16 @@ class DatabaseStore:
 
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS tracks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    path TEXT NOT NULL UNIQUE,
-                    uri TEXT NOT NULL UNIQUE,
-                    title TEXT NOT NULL,
-                    artist TEXT NOT NULL,
-                    album TEXT NOT NULL,
-                    track_no INTEGER NOT NULL DEFAULT 0,
-                    duration REAL NOT NULL DEFAULT 0,
-                    mtime REAL NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS queue (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE
-                );
-                """
-            )
+            conn.executescript(self._read_sql("schema.sql"))
             columns = conn.execute("PRAGMA table_info(tracks)").fetchall()
             column_names = {str(row["name"]) for row in columns}
             if "uri" not in column_names:
-                conn.execute("ALTER TABLE tracks ADD COLUMN uri TEXT NOT NULL DEFAULT ''")
+                conn.executescript(self._read_sql("migration_add_uri.sql"))
             if "track_no" not in column_names:
-                conn.execute("ALTER TABLE tracks ADD COLUMN track_no INTEGER NOT NULL DEFAULT 0")
+                conn.executescript(self._read_sql("migration_add_track_no.sql"))
             if "duration" not in column_names:
-                conn.execute("ALTER TABLE tracks ADD COLUMN duration REAL NOT NULL DEFAULT 0")
-            conn.execute("UPDATE tracks SET uri = path WHERE uri = ''")
+                conn.executescript(self._read_sql("migration_add_duration.sql"))
+            conn.executescript(self._read_sql("maintenance_backfill_uri.sql"))
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_uri ON tracks(uri)")
 
     def upsert_track(
@@ -315,6 +296,10 @@ class DatabaseStore:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
+
+    def _read_sql(self, file_name: str) -> str:
+        sql_path = Path(__file__).with_name("sql") / file_name
+        return sql_path.read_text(encoding="utf-8")
 
     @staticmethod
     def _track_from_row(row: sqlite3.Row) -> TrackRecord:

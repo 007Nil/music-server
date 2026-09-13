@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import time
 
 from mutagen import File as MutagenFile
 
 from music_server.config import Settings
 from music_server.database import DatabaseStore
 
+logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".mp3", ".flac", ".ogg", ".m4a", ".wav"}
 
@@ -36,6 +39,7 @@ class LibraryScanner:
         """Scan the configured music directory and update the database."""
 
         if not self.settings.music_dir.exists():
+            logger.warning("Music directory does not exist: %s", self.settings.music_dir)
             return ScanSummary(
                 scanned_files=0,
                 indexed_tracks=0,
@@ -48,6 +52,10 @@ class LibraryScanner:
         skipped_files = 0
         indexed_paths: set[str] = set()
 
+        logger.info("Starting library scan of %s", self.settings.music_dir)
+        
+        start_time = time.time()
+        
         for file_path in self.settings.music_dir.rglob("*"):
             if not file_path.is_file():
                 continue
@@ -66,21 +74,32 @@ class LibraryScanner:
             normalized_title = self._normalize_text(tag_title or title)
             uri = self._stable_uri_for_file(file_path)
 
-            self.store.upsert_track(
-                path=str(file_path),
-                uri=uri,
-                title=normalized_title,
-                artist=normalized_artist,
-                album=normalized_album,
-                track_no=tag_track_no,
-                duration=duration,
-                mtime=stat.st_mtime,
-            )
-            indexed_paths.add(str(file_path))
-            indexed_tracks += 1
+            try:
+                self.store.upsert_track(
+                    path=str(file_path),
+                    uri=uri,
+                    title=normalized_title,
+                    artist=normalized_artist,
+                    album=normalized_album,
+                    track_no=tag_track_no,
+                    duration=duration,
+                    mtime=stat.st_mtime,
+                )
+                indexed_paths.add(str(file_path))
+                indexed_tracks += 1
+                if indexed_tracks % 100 == 0:  # Log progress every 100 tracks
+                    logger.debug("Indexed %d tracks so far", indexed_tracks)
+            except Exception as e:
+                logger.error("Failed to index track %s: %s", file_path, str(e))
 
         removed_tracks = self.store.delete_tracks_not_in(indexed_paths)
 
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        logger.info("Scan completed in %.2f seconds: scanned=%d, indexed=%d, skipped=%d, removed=%d", 
+                   duration, scanned_files, indexed_tracks, skipped_files, removed_tracks)
+        
         return ScanSummary(
             scanned_files=scanned_files,
             indexed_tracks=indexed_tracks,

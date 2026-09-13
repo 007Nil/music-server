@@ -346,16 +346,16 @@ Responsibilities:
 - Output sink management
 - Mixer integration if retained
 
-### mpd
+### http
 
-Owns the MPD protocol server.
+Owns the HTTP API server.
 
 Responsibilities:
 
-- Socket server
-- Client sessions
-- Command parsing and dispatch
-- Protocol responses
+- HTTP server
+- Route dispatch
+- Request validation
+- JSON responses
 
 ### config
 
@@ -385,11 +385,11 @@ The implementation order should be:
 2. Define the dependency matrix and removal candidates.
 3. Design the target repository layout.
 4. Merge mopidy-local behavior into the new codebase.
-5. Merge mopidy-mpd behavior into the new codebase.
+5. Build and stabilize the HTTP API behavior in the new codebase.
 6. Remove extension infrastructure only after the direct path is validated.
 7. Clean up dead code and simplify further.
 
-This order matters because the local library stack provides the persistence and scanning foundation, while MPD provides the external client-facing contract.
+This order matters because the local library stack provides the persistence and scanning foundation, while HTTP provides the external client-facing contract.
 
 ## Validation Plan
 
@@ -398,7 +398,7 @@ Every phase needs a focused validation step.
 Recommended validation types:
 
 - Targeted unit tests for the touched subsystem
-- Narrow integration tests around startup and protocol handling
+- Narrow integration tests around startup and HTTP route handling
 - Focused type checks or lint checks when a code path is being moved
 - End-to-end smoke tests only after the individual pieces are stable
 
@@ -422,7 +422,7 @@ These should be resolved before implementation begins:
 - Should the initial migration preserve Pykka actors everywhere, or should some controller layers be simplified during the merge?
 - Should the local URI scheme remain exactly as-is for compatibility, or should it be normalized as part of the repository merge?
 - Which parts of Mopidy core should remain as-is during the first merge, and which should be replaced immediately by direct code in the new repository?
-- Which optional behaviors, if any, should remain in the first release beyond the minimum local-library and MPD functionality?
+- Which optional behaviors, if any, should remain in the first release beyond the minimum local-library and HTTP functionality?
 
 ## Practical Next Step
 
