@@ -59,6 +59,14 @@ This is still **not** full Mopidy parity yet, but it is now a much stronger loca
 - [src/music_server/database/sql/migration_add_duration.sql](src/music_server/database/sql/migration_add_duration.sql)
 - [src/music_server/database/sql/maintenance_backfill_uri.sql](src/music_server/database/sql/maintenance_backfill_uri.sql)
 
+### Audio Backend
+
+- [src/music_server/audio/backend/gstreamer_backend.py](src/music_server/audio/backend/gstreamer_backend.py)
+  - GStreamer-based audio playback using GStreamer 1.0
+  - Full pipeline control: play, pause, stop, seek, volume, mute
+  - URI setting and state management
+  - Error handling for playback failures
+
 ### Database Schema
 
 **Tracks table:**
@@ -232,10 +240,12 @@ MUSIC_SERVER_MUSIC_DIR=/path/to/music \
 .venv/bin/python -m music_server.app queue-add 1
 .venv/bin/python -m music_server.app queue
 .venv/bin/python -m music_server.app play-next
-.venv/bin/python -m music_server.app pause 1
-.venv/bin/python -m music_server.app pause 0
-.venv/bin/python -m music_server.app stop
 ```
+
+**Audio playback note:** Audio should be audible through your system speakers after `play-next` completes. If no audio is heard, verify:
+- System volume is not muted
+- Audio output device is correctly selected
+- PulseAudio/PipeWire is running (`pactl list sinks`)
 
 ### HTTP server runtime check
 

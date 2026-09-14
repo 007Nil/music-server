@@ -25,6 +25,8 @@ class GStreamerBackend(AudioBackend):
 
     def set_uri(self, uri: str) -> None:
         self._uri = uri
+        player = self._player
+        self._gst.set_uri(player, uri)
 
     def prepare_change(self) -> None:
         self.stop_playback()
@@ -32,11 +34,6 @@ class GStreamerBackend(AudioBackend):
     def start_playback(self) -> bool:
         if not self._uri:
             return False
-
-        self._gst.set_uri(
-            self._player,
-            self._uri,
-        )
 
         # Restore volume/mute state before starting.
         self._gst.set_volume(
